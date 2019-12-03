@@ -76,3 +76,10 @@ npm start
 ## Trigger Deeplens
 
 In AWS IoT, publish a message to the custom topic created for the greengrass subscription.
+
+## Troubleshooting
+
+- Make sure that AWS cloudwatch logs are enabled on all of the AWS Lambdas and the API gateway and review logs.
+- Confirm that the AWS DeepLens is registered and connected.
+- Confirm that the AWS DeepLens greengrass group subscription for the custom IoT topic has been created and deployed.
+- 
