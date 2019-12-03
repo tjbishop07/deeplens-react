@@ -46,6 +46,9 @@ Once User Pool is created, set the environment variables accordingly. The APP cl
 
 ## Deploy Backend
 
+- Update the `iotTopic` variable in [serverless.yml](backend/serverless.yml) with the AWS DeepLens inference topic.
+- Once the backend is deployed, update the `sendMessage` lambda's environment variable `WSAPI_NAME` and replace `__UPDATE__` with the websocket API's url. This should be handled more gracefully...
+
 ```bash
 cd backend
 serverless deploy
@@ -53,6 +56,8 @@ cd ..
 ```
 
 ## Configure environment
+
+Create a .env.local file in the `frontend` folder in order to run the React application.
 
 ```
 REACT_APP_USER_POOL_ID={AWS cognito user pool id}
@@ -67,3 +72,7 @@ cd frontend
 npm install
 npm start
 ```
+
+## Trigger Deeplens
+
+In AWS IoT, publish a message to the custom topic created for the greengrass subscription.
