@@ -114,7 +114,7 @@ exports.authorizerFunc = async (event, context, callback) => {
     methodArn
   } = event;
 
-  const app_client_id = "2de8j22u1l7edoa3bn8s5vev91";
+  const app_client_id = "app_client_id";
   if (!token) return context.fail("Unauthorized");
   const sections = token.split(".");
   let authHeader = jose.util.base64url.decode(sections[0]);

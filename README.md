@@ -15,7 +15,15 @@ Realtime DeepLens web app using React, AWS API Gateway Websockets, Dynamodb and 
 
 https://docs.aws.amazon.com/cognito/latest/developerguide/tutorial-create-user-pool.html
 
-Once User Pool is created, Replace all <strong>APP_CLIENT_ID</strong> and <strong>USER_POOL_ID</strong> to your created IDs.
+Once User Pool is created, set the environment variables accordingly. The APP client id is used both in the react application and in the authorzerFunc.
+
+## Configure environment
+
+```
+REACT_APP_USER_POOL_ID={AWS cognito user pool id}
+REACT_APP_USER_POOL_CLIENT_ID={AWS cognito app client id}
+REACT_APP_WS_API_NAME={websocket api url}
+```
 
 ## Deploy Backend
 
