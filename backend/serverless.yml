@@ -1,0 +1,83 @@
+service: serverless-deeplens
+
+package:
+  include:
+    - src/**
+  exclude:
+    - node_modules/**
+
+plugins:
+  - serverless-plugin-include-dependencies
+
+custom:
+  iotTopic: '$aws/things/deeplens_EopDct5XR7CEAaZRYhEZzw/infer'
+  includeDependencies:
+    always:
+      - 'src/lib/**'
+      - 'src/**'
+
+provider:
+  name: aws
+  runtime: nodejs8.10
+  stackName: ${self:service}-${self:provider.stage}
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'us-east-1'}
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - "execute-api:ManageConnections"
+      Resource:
+        - "arn:aws:execute-api:*:*:**/@connections/*"
+    - Effect: Allow
+      Action:
+        - "dynamodb:PutItem"
+        - "dynamodb:GetItem"
+        - "dynamodb:UpdateItem"
+        - "dynamodb:DeleteItem"
+        - "dynamodb:Query"
+        - "dynamodb:Scan"
+      Resource:
+        - Fn::GetAtt: [DeepLensConnectionsTable, Arn]
+        - Fn::Join:
+            - "/"
+            - - Fn::GetAtt: [DeepLensConnectionsTable, Arn]
+              - "*"
+  environment:
+    # TODO : Figure out how to get the websocket api ID here and set the WSAPI_NAME variable.
+    WSAPI_NAME: "https://__UPDATE__.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}"    
+    DB_TABLE:
+      Ref: DeepLensConnectionsTable
+  
+  websocketApiName: websocket-deeplens-${self:provider.stage}
+  websocketApiRouteSelectionExpression: $request.body.action
+  
+functions:
+  connectionManager:
+    handler: src/handlers/connectionManager.handler
+    events:
+      - websocket:
+          route: $connect
+          #authorizer: authorizerFunc # references the authorizerFunc function below
+      - websocket:
+          route: $disconnect
+  authorizerFunc:
+    handler: src/handlers/authorizerFunc.handler
+  sendMessage:
+    handler: src/handlers/sendMessage.handler
+    events:
+      - iot:
+          sql: "SELECT * FROM '${self:custom.iotTopic}'"
+resources:
+  Resources:         
+    DeepLensConnectionsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        AttributeDefinitions:
+          - AttributeName: connectionId
+            AttributeType: S
+        KeySchema:
+          - AttributeName: connectionId
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 5
+          WriteCapacityUnits: 5         
