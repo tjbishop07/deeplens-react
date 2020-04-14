@@ -4,15 +4,48 @@
 # All Rights Reserved.                               *
 #                                                    *
 #*****************************************************
-""" A sample lambda for object detection"""
+""" A sample lambda for face detection"""
 from threading import Thread, Event
+from botocore.session import Session
+from PIL import Image
+import boto3
+import io
 import os
 import json
 import numpy as np
 import awscam
 import cv2
 import greengrasssdk
+import time
+import datetime
 
+# Setup the S3 client
+session = Session()
+s3 = session.create_client('s3')
+bucket_name = 'deeplens-output'
+
+# Create a test object
+now = datetime.datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f')
+filename = 'test.txt' # Test object name
+response = s3.put_object(ACL='public-read', Body=now, Bucket=bucket_name, Key=filename)
+
+def check_face(frame,rekognition):
+    try:
+        response = rekognition.search_faces_by_image(
+                    CollectionId='test-collection',
+                    Image={'Bytes':frame}                                       
+                    )
+        if len(response['FaceMatches']) != 1:
+            person_name = "unknown"
+            confidence = '100'
+        else:
+            person_name = response['FaceMatches'][0]['Face']['ExternalImageId']
+            confidence = response['FaceMatches'][0]['Face']['Confidence']
+    except:
+        person_name = "unknown"
+        confidence ='100'
+    return (person_name, confidence)
+    
 class LocalDisplay(Thread):
     """ Class for facilitating the local display of inference results
         (as images). The class is designed to run on its own thread. In
@@ -61,7 +94,7 @@ class LocalDisplay(Thread):
     def set_frame_data(self, frame):
         """ Method updates the image data. This currently encodes the
             numpy array to jpg but can be modified to support other encodings.
-            frame - Numpy array containing the image data of the next frame
+            frame - Numpy array containing the image data tof the next frame
                     in the project stream.
         """
         ret, jpeg = cv2.imencode('.jpg', cv2.resize(frame, self.resolution))
@@ -72,88 +105,108 @@ class LocalDisplay(Thread):
     def join(self):
         self.stop_request.set()
 
-def greengrass_infer_image_run():
+def infinite_infer_run():
     """ Entry point of the lambda function"""
+    iot_topic = '$aws/things/{}/infer'.format(os.environ['AWS_IOT_THING_NAME'])
     try:
-        # This object detection model is implemented as single shot detector (ssd), since
-        # the number of labels is small we create a dictionary that will help us convert
-        # the machine labels to human readable labels.
+        # This face detection model is implemented as single shot detector (ssd).
         model_type = 'ssd'
-        output_map = {1: 'aeroplane', 2: 'bicycle', 3: 'bird', 4: 'boat', 5: 'bottle', 6: 'bus',
-                      7 : 'car', 8 : 'cat', 9 : 'chair', 10 : 'cow', 11 : 'dinning table',
-                      12 : 'dog', 13 : 'horse', 14 : 'motorbike', 15 : 'person',
-                      16 : 'pottedplant', 17 : 'sheep', 18 : 'sofa', 19 : 'train',
-                      20 : 'tvmonitor'}
+        output_map = {1: 'face'}
         # Create an IoT client for sending to messages to the cloud.
         client = greengrasssdk.client('iot-data')
-        iot_topic = '$aws/things/{}/infer'.format(os.environ['AWS_IOT_THING_NAME'])
+        rekognition = boto3.client('rekognition')
         # Create a local display instance that will dump the image bytes to a FIFO
         # file that the image can be rendered locally.
         local_display = LocalDisplay('480p')
         local_display.start()
         # The sample projects come with optimized artifacts, hence only the artifact
         # path is required.
-        model_path = '/opt/awscam/artifacts/mxnet_deploy_ssd_resnet50_300_FP16_FUSED.xml'
+        model_path = '/opt/awscam/artifacts/mxnet_deploy_ssd_FP16_FUSED.xml'
         # Load the model onto the GPU.
-        client.publish(topic=iot_topic, payload='Loading object detection model')
+        client.publish(topic=iot_topic, payload='{"message":"Loading face detection model"}')
         model = awscam.Model(model_path, {'GPU': 1})
-        client.publish(topic=iot_topic, payload='Object detection model loaded')
+        client.publish(topic=iot_topic, payload='{"message":"Face detection model loaded"}')
         # Set the threshold for detection
         detection_threshold = 0.25
         # The height and width of the training set images
         input_height = 300
         input_width = 300
         # Do inference until the lambda is killed.
-
-        # Get a frame from the video stream
-        ret, frame = awscam.getLastFrame()
-        if not ret:
-            raise Exception('Failed to get frame from the stream')
-        # Resize frame to the same size as the training set.
-        frame_resize = cv2.resize(frame, (input_height, input_width))
-        # Run the images through the inference engine and parse the results using
-        # the parser API, note it is possible to get the output of doInference
-        # and do the parsing manually, but since it is a ssd model,
-        # a simple API is provided.
-        parsed_inference_results = model.parseResult(model_type, model.doInference(frame_resize))
-        # Compute the scale in order to draw bounding boxes on the full resolution
-        # image.
-        yscale = float(frame.shape[0]) / float(input_height)
-        xscale = float(frame.shape[1]) / float(input_width)
-        # Dictionary to be filled with labels and probabilities for MQTT
-        cloud_output = {}
-        # Get the detected objects and probabilities
-        for obj in parsed_inference_results[model_type]:
-            if obj['prob'] > detection_threshold:
-                # Add bounding boxes to full resolution frame
-                xmin = int(xscale * obj['xmin'])
-                ymin = int(yscale * obj['ymin'])
-                xmax = int(xscale * obj['xmax'])
-                ymax = int(yscale * obj['ymax'])
-                # See https://docs.opencv.org/3.4.1/d6/d6e/group__imgproc__draw.html
-                # for more information about the cv2.rectangle method.
-                # Method signature: image, point1, point2, color, and tickness.
-                cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 165, 20), 10)
-                # Amount to offset the label/probability text above the bounding box.
-                text_offset = 15
-                cv2.putText(frame, "{}: {:.2f}%".format(output_map[obj['label']], obj['prob'] * 100),
+        while True:
+            # Get a frame from the video stream
+            ret, frame = awscam.getLastFrame()
+            if not ret:
+                raise Exception('Failed to get frame from the stream')
+            # Resize frame to the same size as the training set.
+            frame_resize = cv2.resize(frame, (input_height, input_width))
+            # Run the images through the inference engine and parse the results using
+            # the parser API, note it is possible to get the output of doInference
+            # and do the parsing manually, but since it is a ssd model,
+            # a simple API is provided.
+            parsed_inference_results = model.parseResult(model_type,
+                                                         model.doInference(frame_resize))
+            # Compute the scale in order to draw bounding boxes on the full resolution
+            # image.
+            yscale = float(frame.shape[0]) / float(input_height)
+            xscale = float(frame.shape[1]) / float(input_width)
+            # Dictionary to be filled with labels and probabilities for MQTT
+            cloud_output = {}
+            # Get the detected faces and probabilities
+            for obj in parsed_inference_results[model_type]:
+                if obj['prob'] > detection_threshold:
+                    # Add bounding boxes to full resolution frame
+                    xmin = int(xscale * obj['xmin'])
+                    ymin = int(yscale * obj['ymin'])
+                    xmax = int(xscale * obj['xmax'])
+                    ymax = int(yscale * obj['ymax'])
+                    # See https://docs.opencv.org/3.4.1/d6/d6e/group__imgproc__draw.html
+                    # for more information about the cv2.rectangle method.
+                    # Method signature: image, point1, point2, color, and tickness.
+                    cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), (255, 165, 20), 1)
+                    # create face frame
+                    face_frame = frame[ymin:ymax,xmin:xmax]
+                    face_image = Image.fromarray(face_frame)
+                    face_bytes_arr = io.BytesIO()
+                    face_image.save(face_bytes_arr, format='JPEG')
+                    face_bytes = face_bytes_arr.getvalue()
+                    print(repr(face_bytes))
+                    person_name, confidence = check_face(face_bytes,rekognition)
+                    # Amount to offset the label/probability text above the bounding box.
+                    text_offset = 15
+                    # See https://docs.opencv.org/3.4.1/d6/d6e/group__imgproc__draw.html
+                    # for more information about the cv2.putText method.
+                    # Method signature: image, text, origin, font face, font scale, color,
+                    # and tickness
+                    cv2.putText(frame, '{} {}%'.format(person_name,confidence),
                                 (xmin, ymin-text_offset),
                                 cv2.FONT_HERSHEY_SIMPLEX, 2.5, (255, 165, 20), 6)
-                # Store label and probability to send to cloud
-                cloud_output[output_map[obj['label']]] = obj['prob']
-        # Set the next frame in the local display stream.
-        local_display.set_frame_data(frame)
-        # Send results to the cloud
-        client.publish(topic=iot_topic, payload=json.dumps(cloud_output))
+                    # Store label and probability to send to cloud
+                    if obj['label'] == 1:
+                        cloud_output['name'] = person_name
+                        cloud_output['confidence'] = confidence
+                    cloud_output[output_map[obj['label']]] = obj['prob']
+                    if person_name:
+                        #client.publish(topic=iot_topic, payload='{"message":"Hi there !NAME!!"}')
+                        #client.publish(topic=iot_topic, payload=json.dumps(cloud_output))
+                        try:
+                            # Create an S3 file
+                            s3_key = datetime.datetime.utcnow().strftime('%Y-%m-%d_%H_%M_%S.%f') + '.jpg'
+                            encode_param=[int(cv2.IMWRITE_JPEG_QUALITY), 90]  # 90% should be more than enough
+                            _, jpg_data = cv2.imencode('.jpg', face_frame, encode_param)
+                            filename = "incoming/%s" % s3_key  # the guess lambda function is listening here
+                            upload_response = s3.put_object(Body=jpg_data.tostring(), Bucket=bucket_name, Key=filename)
+                            image_url_response = s3.generate_presigned_url('get_object', Params={'Bucket': bucket_name, 'Key': filename})
+                            #client.publish(topic=iot_topic, payload='{ "message": "Image saved." }')
+                            cloud_output['image_url'] = image_url_response
+                        except Exception as ex:
+                            client.publish(topic=iot_topic, payload='Error uploading: {}'.format(ex))
+            # Set the next frame in the local display stream.
+            local_display.set_frame_data(frame)
+            # Send results to the cloud
+            client.publish(topic=iot_topic, payload=json.dumps(cloud_output))
+            wait_time = 10 #seconds
+            time.sleep(wait_time)
     except Exception as ex:
-        client.publish(topic=iot_topic, payload='Error in object detection lambda: {}'.format(ex))
+        client.publish(topic=iot_topic, payload='Error in face detection lambda: {}'.format(ex))
 
-def test(event, context):
-    greengrass_infer_image_run()
-    
-def lambda_handler(event, context):
-    print('trigger fired!')    
-    greengrass_infer_image_run()
-    return
-
-print('loaded lambda')
+infinite_infer_run()

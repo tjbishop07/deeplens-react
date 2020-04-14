@@ -1,8 +1,18 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
+import 'alpinejs';
 import './index.css';
 import App from './App';
 //import * as serviceWorker from './serviceWorker';
+
+window.counter = function() {
+    return {
+      count: 0,
+      inc() {
+        this.count += 1;
+      }
+    };
+  };
 
 ReactDOM.render(<App />, document.getElementById('root'));
 

@@ -1,3 +1,5 @@
+org: tjbishop07
+app: my-first-app
 service: serverless-deeplens
 
 package:
@@ -10,7 +12,7 @@ plugins:
   - serverless-plugin-include-dependencies
 
 custom:
-  iotTopic: '$aws/things/deeplens_EopDct5XR7CEAaZRYhEZzw/infer'
+  iotTopic: '$aws/things/deeplens_wS-3MEd7TIu9sA1GwC8VvQ/infer'
   includeDependencies:
     always:
       - 'src/lib/**'
@@ -18,7 +20,7 @@ custom:
 
 provider:
   name: aws
-  runtime: nodejs8.10
+  runtime: nodejs12.x
   stackName: ${self:service}-${self:provider.stage}
   stage: ${opt:stage, 'dev'}
   region: ${opt:region, 'us-east-1'}
@@ -44,7 +46,7 @@ provider:
               - "*"
   environment:
     # TODO : Figure out how to get the websocket api ID here and set the WSAPI_NAME variable.
-    WSAPI_NAME: "https://__UPDATE__.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}"    
+    WSAPI_NAME: "https://t8tyvtcmg2.execute-api.${self:provider.region}.amazonaws.com/${self:provider.stage}"    
     DB_TABLE:
       Ref: DeepLensConnectionsTable
   

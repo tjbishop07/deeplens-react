@@ -12,11 +12,11 @@ class App extends Component {
   render() {
     return (
       <div className="App">
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <b>DeepLens Alert:</b>        
-          <DeepLensAlert {...this.props} />
-        </header>        
+        {/* <header className="App-header"> */}
+        {/* <img src={logo} className="App-logo" alt="logo" /> */}
+        {/* <b>Face Confidence</b>         */}
+        <DeepLensAlert {...this.props} />
+        {/* </header>         */}
       </div>
     );
   }
